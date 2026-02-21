@@ -22,15 +22,13 @@ export function* defragStepper(
 		}
 		if (freeIdx === -1) break;
 
-		// Find next data block after the free slot
-		let dataIdx = -1;
+		// Collect fragmented (red) block indices after the free slot and pick one at random
+		const fragIndices: number[] = [];
 		for (let i = freeIdx + 1; i < g.length; i++) {
-			if (g[i] === "fragmented" || g[i] === "contiguous") {
-				dataIdx = i;
-				break;
-			}
+			if (g[i] === "fragmented") fragIndices.push(i);
 		}
-		if (dataIdx === -1) break;
+		if (fragIndices.length === 0) break;
+		const dataIdx = fragIndices[Math.floor(Math.random() * fragIndices.length)];
 
 		// Swap — moved block becomes contiguous (blue)
 		g[freeIdx] = "contiguous";

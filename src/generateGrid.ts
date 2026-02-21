@@ -26,11 +26,12 @@ export function generateGrid(): BlockGrid {
 		const dataProb = pos < 80 ? 0.75 : pos < 180 ? 0.45 : 0.2;
 
 		if (Math.random() < dataProb) {
-			const type: BlockType = Math.random() < 0.4 ? "fragmented" : "contiguous";
+			const type: BlockType =
+				Math.random() < 0.75 ? "fragmented" : "contiguous";
 			const clusterLen =
 				type === "contiguous"
-					? 3 + Math.floor(Math.random() * 15)
-					: 1 + Math.floor(Math.random() * 4);
+					? 1 + Math.floor(Math.random() * 5)
+					: 1 + Math.floor(Math.random() * 3);
 
 			for (let j = 0; j < clusterLen && pos + j < BLOCK_COUNT; j++) {
 				if (grid[pos + j] === "unmovable") break;
