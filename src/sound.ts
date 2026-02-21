@@ -9,23 +9,21 @@ function getCtx(): AudioContext {
 	return audioCtx;
 }
 
-/** Continuous low spindle motor hum — runs the whole time the drive is "active" */
+/** Low rumbling hum — spindle motor + bearing noise */
 export function startSpindle() {
 	const ctx = getCtx();
 	if (spindleNode) return;
 
-	// Create a looping noise buffer for the spindle whir
 	const sampleRate = ctx.sampleRate;
 	const length = sampleRate * 2;
 	const buffer = ctx.createBuffer(1, length, sampleRate);
 	const data = buffer.getChannelData(0);
 	for (let i = 0; i < length; i++) {
-		// Mix a low rumble with subtle periodic content (spindle rotation)
-		const phase = (i / sampleRate) * 120 * Math.PI * 2; // ~60Hz rotation
+		const phase = (i / sampleRate) * 120 * Math.PI * 2;
 		data[i] =
-			(Math.random() * 2 - 1) * 0.03 + // noise floor
-			Math.sin(phase) * 0.015 + // fundamental hum
-			Math.sin(phase * 2.02) * 0.008; // slight harmonic wobble
+			(Math.random() * 2 - 1) * 0.03 +
+			Math.sin(phase) * 0.015 +
+			Math.sin(phase * 2.02) * 0.008;
 	}
 
 	spindleNode = ctx.createBufferSource();
@@ -57,128 +55,62 @@ export function stopSpindle() {
 	}
 }
 
-/** Hard metallic click — the head slamming into position */
-function playHeadClick() {
+/** Single mechanical click — voice coil actuator */
+function playClick(time: number, volume: number) {
 	const ctx = getCtx();
-	const now = ctx.currentTime;
 
-	// Sharp impulse via short noise burst
-	const len = Math.floor(ctx.sampleRate * 0.004);
-	const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-	const d = buf.getChannelData(0);
-	for (let i = 0; i < len; i++) {
-		const env = 1 - i / len;
-		d[i] = (Math.random() * 2 - 1) * env * env;
-	}
-
-	const src = ctx.createBufferSource();
-	src.buffer = buf;
-
-	// Resonant peak gives it that metallic "tick"
-	const peak = ctx.createBiquadFilter();
-	peak.type = "bandpass";
-	peak.frequency.value = 2000 + Math.random() * 2000;
-	peak.Q.value = 8 + Math.random() * 8;
+	const osc = ctx.createOscillator();
+	osc.type = "triangle";
+	osc.frequency.setValueAtTime(500 + Math.random() * 300, time);
+	osc.frequency.exponentialRampToValueAtTime(150, time + 0.008);
 
 	const gain = ctx.createGain();
-	gain.gain.setValueAtTime(0.25 + Math.random() * 0.15, now);
-	gain.gain.exponentialRampToValueAtTime(0.001, now + 0.015);
+	gain.gain.setValueAtTime(volume, time);
+	gain.gain.exponentialRampToValueAtTime(0.001, time + 0.012);
 
-	src.connect(peak);
-	peak.connect(gain);
+	const lp = ctx.createBiquadFilter();
+	lp.type = "lowpass";
+	lp.frequency.value = 1800;
+
+	osc.connect(lp);
+	lp.connect(gain);
 	gain.connect(ctx.destination);
-	src.start(now);
+
+	osc.start(time);
+	osc.stop(time + 0.015);
 }
 
-/** Longer grinding seek — head traversing multiple tracks */
-function playSeekGrind() {
-	const ctx = getCtx();
-	const now = ctx.currentTime;
-	const duration = 0.02 + Math.random() * 0.04;
+/** Seek: rapid "chk-chk-chk" as head steps across tracks */
+function playSeek(time: number) {
+	const clicks = 2 + Math.floor(Math.random() * 5);
+	const spacing = 0.012 + Math.random() * 0.018;
+	const vol = 0.08 + Math.random() * 0.06;
 
-	const len = Math.floor(ctx.sampleRate * duration);
-	const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-	const d = buf.getChannelData(0);
-	// Harsh, crunchy noise
-	for (let i = 0; i < len; i++) {
-		const env = (1 - i / len) ** 0.5;
-		// Square-ish noise for that gritty texture
-		d[i] = (Math.random() > 0.5 ? 1 : -1) * env * 0.5 * Math.random();
+	for (let i = 0; i < clicks; i++) {
+		playClick(time + i * spacing, vol * (0.8 + Math.random() * 0.4));
 	}
 
-	const src = ctx.createBufferSource();
-	src.buffer = buf;
-
-	const bp = ctx.createBiquadFilter();
-	bp.type = "bandpass";
-	bp.frequency.value = 1200 + Math.random() * 1500;
-	bp.Q.value = 3 + Math.random() * 4;
-
-	const gain = ctx.createGain();
-	gain.gain.setValueAtTime(0.18, now);
-	gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-	src.connect(bp);
-	bp.connect(gain);
-	gain.connect(ctx.destination);
-	src.start(now);
+	return clicks * spacing;
 }
 
-/** Read/write chatter — rapid staccato clicks like data being transferred */
-function playReadChatter() {
-	const ctx = getCtx();
-	const now = ctx.currentTime;
-	const clicks = 3 + Math.floor(Math.random() * 6);
-
-	for (let c = 0; c < clicks; c++) {
-		const offset = c * (0.008 + Math.random() * 0.012);
-		const len = Math.floor(ctx.sampleRate * 0.003);
-		const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-		const d = buf.getChannelData(0);
-		for (let i = 0; i < len; i++) {
-			d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-		}
-
-		const src = ctx.createBufferSource();
-		src.buffer = buf;
-
-		const hp = ctx.createBiquadFilter();
-		hp.type = "highpass";
-		hp.frequency.value = 3000 + Math.random() * 2000;
-
-		const gain = ctx.createGain();
-		gain.gain.setValueAtTime(0.12 + Math.random() * 0.08, now + offset);
-		gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.005);
-
-		src.connect(hp);
-		hp.connect(gain);
-		gain.connect(ctx.destination);
-		src.start(now + offset);
-	}
+/** Settle click after a seek */
+function playSettle(time: number) {
+	playClick(time, 0.12 + Math.random() * 0.05);
 }
 
-/** Heavy burst of activity — what you hear when defrag is really working hard */
+/** One crunch: seek-settle cycle */
 export function playDefragBurst() {
-	// Rapid-fire sequence: seek, clicks, chatter, more seeks
-	const events = 6 + Math.floor(Math.random() * 8);
-	for (let i = 0; i < events; i++) {
-		setTimeout(
-			() => {
-				const r = Math.random();
-				if (r < 0.35) {
-					playHeadClick();
-				} else if (r < 0.6) {
-					playSeekGrind();
-				} else if (r < 0.85) {
-					playReadChatter();
-				} else {
-					// Double click — head bouncing
-					playHeadClick();
-					setTimeout(playHeadClick, 3 + Math.random() * 8);
-				}
-			},
-			i * (8 + Math.random() * 25),
-		);
+	const ctx = getCtx();
+	const now = ctx.currentTime;
+
+	const cycles = 2 + Math.floor(Math.random() * 4);
+	let t = now;
+
+	for (let c = 0; c < cycles; c++) {
+		const seekDur = playSeek(t);
+		t += seekDur;
+		playSettle(t);
+		t += 0.02 + Math.random() * 0.06;
 	}
 }
 
